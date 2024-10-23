@@ -12,27 +12,15 @@
  */
 package org.tron.trident.abi;
 
+import org.tron.trident.abi.datatypes.*;
+import org.tron.trident.abi.datatypes.primitive.PrimitiveType;
+import org.tron.trident.utils.Numeric;
+
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-
-import org.tron.trident.abi.datatypes.DynamicStruct;
-import org.tron.trident.abi.datatypes.StaticArray;
-import org.tron.trident.abi.datatypes.Address;
-import org.tron.trident.abi.datatypes.Array;
-import org.tron.trident.abi.datatypes.Bool;
-import org.tron.trident.abi.datatypes.Bytes;
-import org.tron.trident.abi.datatypes.BytesType;
-import org.tron.trident.abi.datatypes.DynamicArray;
-import org.tron.trident.abi.datatypes.DynamicBytes;
-import org.tron.trident.abi.datatypes.NumericType;
-import org.tron.trident.abi.datatypes.Type;
-import org.tron.trident.abi.datatypes.Ufixed;
-import org.tron.trident.abi.datatypes.Uint;
-import org.tron.trident.abi.datatypes.Utf8String;
-import org.tron.trident.abi.datatypes.primitive.PrimitiveType;
-import org.tron.trident.utils.Numeric;
+import java.util.stream.Collectors;
 
 import static org.tron.trident.abi.datatypes.Type.MAX_BIT_LENGTH;
 import static org.tron.trident.abi.datatypes.Type.MAX_BYTE_LENGTH;
@@ -229,6 +217,8 @@ public class TypeEncoder {
                 !value.getValue().isEmpty() && value.getValue().get(0) instanceof DynamicBytes;
         boolean arrayOfString =
                 !value.getValue().isEmpty() && value.getValue().get(0) instanceof Utf8String;
+        boolean arrayOfDynamicStructs =
+                !value.getValue().isEmpty() && value.getValue().get(0) instanceof DynamicStruct;
         if (arrayOfBytes || arrayOfString) {
             long offset = 0;
             for (int i = 0; i < value.getValue().size(); i++) {
@@ -248,7 +238,29 @@ public class TypeEncoder {
                                 Numeric.toBytesPadded(
                                         new BigInteger(Long.toString(offset)), MAX_BYTE_LENGTH)));
             }
+        } else if (arrayOfDynamicStructs) {
+            result.append(encodeStructsArraysOffsets(value));
         }
         return result.toString();
     }
+
+    private static <T extends Type> String encodeStructsArraysOffsets(Array<T> value) {
+        StringBuilder result = new StringBuilder();
+        long offset = value.getValue().size();
+        List<String> tailsEncoding =
+                value.getValue().stream().map(TypeEncoder::encode).collect(Collectors.toList());
+        for (int i = 0; i < value.getValue().size(); i++) {
+            if (i == 0) {
+                offset = offset * MAX_BYTE_LENGTH;
+            } else {
+                offset += tailsEncoding.get(i - 1).length() / 2;
+            }
+            result.append(
+                    Numeric.toHexStringNoPrefix(
+                            Numeric.toBytesPadded(
+                                    new BigInteger(Long.toString(offset)), MAX_BYTE_LENGTH)));
+        }
+        return result.toString();
+    }
+
 }

@@ -13,7 +13,6 @@
 package org.tron.trident.abi;
 
 import org.tron.trident.abi.datatypes.*;
-import org.tron.trident.abi.datatypes.*;
 import org.tron.trident.abi.datatypes.generated.Uint160;
 import org.tron.trident.abi.datatypes.primitive.Double;
 import org.tron.trident.abi.datatypes.primitive.Float;
@@ -27,6 +26,8 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.BiFunction;
+
+import static org.tron.trident.abi.Utils.staticStructNestedPublicFieldsFlatList;
 
 /**
  * Ethereum Contract Application Binary Interface (ABI) decoding for types. Decoding is not
@@ -235,6 +236,8 @@ public class TypeDecoder {
                 || Utf8String.class.isAssignableFrom(type)) {
             // length field + data value
             return (decodeUintAsInt(input, offset) / Type.MAX_BYTE_LENGTH) + 2;
+        } else if (StaticStruct.class.isAssignableFrom(type)){
+            return staticStructNestedPublicFieldsFlatList((Class<Type>) type).size();
         } else {
             return 1;
         }
@@ -350,7 +353,7 @@ public class TypeDecoder {
             final int length = constructor.getParameterCount();
             List<T> elements = new ArrayList<>(length);
 
-            for (int i = 0, currOffset = 0; i < length; i++) {
+            for (int i = 0, currOffset = offset; i < length; i++) {
                 T value;
                 final Class<T> declaredField = (Class<T>) constructor.getParameterTypes()[i];
 
