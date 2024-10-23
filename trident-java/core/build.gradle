@@ -39,3 +39,22 @@ protobuf {
     generatedFilesBaseDir = "$projectDir/src"
 }
 
+sourceSets {
+    main {
+        java {
+            // 添加所有需要的源代码目录
+            srcDirs = ['src/main/grpc', 'src/main/java', 'src/main/proto']  // 把你需要的其他src目录都加进来
+        }
+        resources {
+            srcDirs = ['src/resources', 'src/main/resources']  // 资源文件目录
+        }
+    }
+    test {
+        java {
+            srcDirs = ['src/test/java']  // 测试代码目录
+        }
+        resources {
+            srcDirs = ['src/test/resources']  // 测试资源目录
+        }
+    }
+}
