@@ -47,6 +47,11 @@ subprojects {
         from javadoc.destinationDir
     }
 
+    javadoc {
+        options.addStringOption('Xdoclint:none', '-quiet')
+        failOnError = false
+    }
+
     task wrapper(type: Wrapper) {
         gradleVersion = '6.6.1'
     }
@@ -54,6 +59,42 @@ subprojects {
     artifacts {
         archives jar
         archives sourcesJar
+    }
+
+    publishing {
+        publications {
+            mavenJava(MavenPublication) {
+                from components.java
+
+                artifact sourcesJar
+                artifact javadocJar
+
+                pom {
+                    name = project.name
+                    description = 'Trident Project'
+                    licenses {
+                        license {
+                            name = 'The Apache License, Version 2.0'
+                            url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        }
+                    }
+                }
+            }
+        }
+
+        repositories {
+            maven {
+                def isSnapshot = version.endsWith('SNAPSHOT')
+                url = isSnapshot ?
+                        findProperty('mavenSnapshotsUrl') :
+                        findProperty('mavenReleasesUrl')
+
+                credentials {
+                    username = findProperty('nexusUsername') ?: System.getenv('NEXUS_USERNAME')
+                    password = findProperty('nexusPassword') ?: System.getenv('NEXUS_PASSWORD')
+                }
+            }
+        }
     }
 }
 
