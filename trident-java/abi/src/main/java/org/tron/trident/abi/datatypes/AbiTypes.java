@@ -124,7 +124,8 @@ import org.tron.trident.abi.datatypes.primitive.Short;
  * <code>uint24</code>, etc.
  */
 public final class AbiTypes {
-    private AbiTypes() {}
+    private AbiTypes() {
+    }
 
     /**
      * Returns the web3j data type for the given type, without using primitive types.
@@ -139,7 +140,7 @@ public final class AbiTypes {
     /**
      * Returns the web3j data type for the given type.
      *
-     * @param type A Solidity type.
+     * @param type       A Solidity type.
      * @param primitives Use Java primitive types to wrap contract parameters.
      * @return The web3j Java class to represent this Solidity type.
      */
@@ -365,7 +366,12 @@ public final class AbiTypes {
             case "trcToken":
                 return TrcToken.class;
             default:
-                throw new UnsupportedOperationException("Unsupported type encountered: " + type);
+                try {
+                    return (Class<? extends Type>) Class.forName(type);
+                } catch (ClassNotFoundException e) {
+                    throw new UnsupportedOperationException(
+                            "Unsupported type encountered: " + type);
+                }
         }
     }
 

@@ -24,10 +24,12 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 
-
-/** Utility functions. */
+/**
+ * Utility functions.
+ */
 public class Utils {
-    private Utils() {}
+    private Utils() {
+    }
 
     static <T extends Type> String getTypeName(TypeReference<T> typeReference) {
         try {
@@ -58,6 +60,8 @@ public class Utils {
             return "string";
         } else if (type.equals(DynamicBytes.class)) {
             return "bytes";
+        } else if (StructType.class.isAssignableFrom(type)) {
+            return type.getName();
         } else {
             return simpleName;
         }
@@ -119,9 +123,9 @@ public class Utils {
                 result.add(e);
             }
         } catch (NoSuchMethodException
-                | IllegalAccessException
-                | InstantiationException
-                | InvocationTargetException e) {
+                 | IllegalAccessException
+                 | InstantiationException
+                 | InvocationTargetException e) {
             throw new TypeMappingException(e);
         }
         return result;
@@ -140,9 +144,9 @@ public class Utils {
                     result.add(constructor.newInstance(value));
                 }
             } catch (NoSuchMethodException
-                    | IllegalAccessException
-                    | InvocationTargetException
-                    | InstantiationException e) {
+                     | IllegalAccessException
+                     | InvocationTargetException
+                     | InstantiationException e) {
                 throw new TypeMappingException(e);
             }
         }
@@ -186,5 +190,42 @@ public class Utils {
                         .collect(Collectors.toList());
         return Stream.concat(canonicalFields.stream(), nestedFields.stream())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Ports {@link java.lang.reflect.Type#getTypeName()}.
+     */
+    public static String getTypeName(java.lang.reflect.Type type) {
+        try {
+            return type.getTypeName();
+        } catch (NoSuchMethodError e) {
+            return getClassName((Class) type);
+        }
+    }
+
+    /**
+     * Support java version < 8 Copied from {@link Class#getTypeName()}.
+     */
+    private static String getClassName(Class type) {
+        if (type.isArray()) {
+            try {
+                Class<?> cl = type;
+                int dimensions = 0;
+                while (cl.isArray()) {
+                    dimensions++;
+                    cl = cl.getComponentType();
+                }
+                StringBuilder sb = new StringBuilder();
+                sb.append(cl.getName());
+                for (int i = 0; i < dimensions; i++) {
+                    sb.append("[]");
+                }
+                return sb.toString();
+            } catch (Throwable e) {
+                /*FALLTHRU*/
+            }
+        }
+
+        return type.getName();
     }
 }

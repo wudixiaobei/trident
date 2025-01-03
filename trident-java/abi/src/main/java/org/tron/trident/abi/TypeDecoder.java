@@ -27,6 +27,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.BiFunction;
 
+import static org.tron.trident.abi.DefaultFunctionReturnDecoder.getDataOffset;
+import static org.tron.trident.abi.Utils.getSimpleTypeName;
 import static org.tron.trident.abi.Utils.staticStructNestedPublicFieldsFlatList;
 
 /**
@@ -380,7 +382,7 @@ public class TypeDecoder {
                 elements.add(value);
             }
 
-            String typeName = Utils.getSimpleTypeName(classType);
+            String typeName = getSimpleTypeName(classType);
 
             return consumer.apply(elements, typeName);
         } catch (ClassNotFoundException e) {
@@ -517,7 +519,7 @@ public class TypeDecoder {
                 }
             }
 
-            String typeName = Utils.getSimpleTypeName(classType);
+            String typeName = getSimpleTypeName(classType);
 
             final List<T> elements = new ArrayList<>();
             for (int i = 0; i < length; ++i) {
@@ -610,6 +612,43 @@ public class TypeDecoder {
         }
     }
 
+//    private static <T extends Type> T decodeArrayElements(
+//            String input,
+//            int offset,
+//            TypeReference<T> typeReference,
+//            int length,
+//            BiFunction<List<T>, String, T> consumer) {
+//
+//        try {
+//            Class<T> cls = Utils.getParameterizedTypeFromArray(typeReference);
+//            if (Array.class.isAssignableFrom(cls)) {
+//                throw new UnsupportedOperationException(
+//                        "Arrays of arrays are not currently supported for external functions, see"
+//                                + "http://solidity.readthedocs.io/en/develop/types.html#members");
+//            } else {
+//                List<T> elements = new ArrayList<>(length);
+//
+//                for (int i = 0, currOffset = offset;
+//                        i < length;
+//                        i++,
+//                                currOffset +=
+//                                        getSingleElementLength(input, currOffset, cls)
+//                                                * MAX_BYTE_LENGTH_FOR_HEX_STRING) {
+//                    T value = decode(input, currOffset, cls);
+//                    elements.add(value);
+//                }
+//
+//                String typeName = Utils.getSimpleTypeName(cls);
+//
+//                return consumer.apply(elements, typeName);
+//            }
+//        } catch (ClassNotFoundException e) {
+//            throw new UnsupportedOperationException(
+//                    "Unable to access parameterized type " + typeReference.getType().getTypeName(),
+//                    e);
+//        }
+//    }
+
     private static <T extends Type> T decodeArrayElements(
             String input,
             int offset,
@@ -619,31 +658,64 @@ public class TypeDecoder {
 
         try {
             Class<T> cls = Utils.getParameterizedTypeFromArray(typeReference);
-            if (Array.class.isAssignableFrom(cls)) {
+            if (StructType.class.isAssignableFrom(cls)) {
+                List<T> elements = new ArrayList<>(length);
+                for (int i = 0, currOffset = offset;
+                     i < length;
+                     i++,
+                             currOffset +=
+                                     getSingleElementLength(input, currOffset, cls)
+                                             * MAX_BYTE_LENGTH_FOR_HEX_STRING) {
+                    T value;
+                    if (DynamicStruct.class.isAssignableFrom(cls)) {
+                        value =
+                                TypeDecoder.decodeDynamicStruct(
+                                        input,
+                                        offset + getDataOffset(input, currOffset, typeReference),
+                                        TypeReference.create(cls));
+                    } else {
+                        value =
+                                TypeDecoder.decodeStaticStruct(
+                                        input, currOffset, TypeReference.create(cls));
+                    }
+                    elements.add(value);
+                }
+
+                String typeName = getSimpleTypeName(cls);
+
+                return consumer.apply(elements, typeName);
+            } else if (Array.class.isAssignableFrom(cls)) {
                 throw new UnsupportedOperationException(
                         "Arrays of arrays are not currently supported for external functions, see"
                                 + "http://solidity.readthedocs.io/en/develop/types.html#members");
             } else {
                 List<T> elements = new ArrayList<>(length);
-
-                for (int i = 0, currOffset = offset;
-                        i < length;
-                        i++,
-                                currOffset +=
-                                        getSingleElementLength(input, currOffset, cls)
-                                                * MAX_BYTE_LENGTH_FOR_HEX_STRING) {
-                    T value = decode(input, currOffset, cls);
+                int currOffset = offset;
+                for (int i = 0; i < length; i++) {
+                    T value;
+                    if (isDynamic(cls)) {
+                        int hexStringDataOffset = getDataOffset(input, currOffset, typeReference);
+                        value = decode(input, offset + hexStringDataOffset, cls);
+                        currOffset += MAX_BYTE_LENGTH_FOR_HEX_STRING;
+                    } else {
+                        value = decode(input, currOffset, cls);
+                        currOffset +=
+                                getSingleElementLength(input, currOffset, cls)
+                                        * MAX_BYTE_LENGTH_FOR_HEX_STRING;
+                    }
                     elements.add(value);
                 }
 
-                String typeName = Utils.getSimpleTypeName(cls);
+                String typeName = getSimpleTypeName(cls);
 
                 return consumer.apply(elements, typeName);
             }
         } catch (ClassNotFoundException e) {
             throw new UnsupportedOperationException(
-                    "Unable to access parameterized type " + typeReference.getType().getTypeName(),
+                    "Unable to access parameterized type "
+                            + Utils.getTypeName(typeReference.getType()),
                     e);
         }
     }
+
 }

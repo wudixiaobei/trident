@@ -12,23 +12,17 @@
  */
 package org.tron.trident.abi;
 
+import org.tron.trident.abi.datatypes.*;
+import org.tron.trident.abi.datatypes.generated.Bytes32;
+import org.tron.trident.utils.Numeric;
+import org.tron.trident.utils.Strings;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import org.tron.trident.abi.datatypes.generated.Bytes32;
-import org.tron.trident.abi.datatypes.Array;
-import org.tron.trident.abi.datatypes.Bytes;
-import org.tron.trident.abi.datatypes.BytesType;
-import org.tron.trident.abi.datatypes.DynamicArray;
-import org.tron.trident.abi.datatypes.DynamicBytes;
-import org.tron.trident.abi.datatypes.DynamicStruct;
-import org.tron.trident.abi.datatypes.StaticArray;
-import org.tron.trident.abi.datatypes.StaticStruct;
-import org.tron.trident.abi.datatypes.Type;
-import org.tron.trident.abi.datatypes.Utf8String;
-import org.tron.trident.utils.Numeric;
-import org.tron.trident.utils.Strings;
+import static org.tron.trident.abi.TypeDecoder.isDynamic;
+import static org.tron.trident.abi.Utils.getParameterizedTypeFromArray;
 
 /**
  * Ethereum Contract Application Binary Interface (ABI) encoding for functions. Further details are
@@ -145,4 +139,41 @@ public class DefaultFunctionReturnDecoder extends FunctionReturnDecoder {
             return offset;
         }
     }
+
+    public static <T extends Type> int getDataOffset(
+            String input, int offset, TypeReference<?> typeReference)
+            throws ClassNotFoundException {
+        @SuppressWarnings("unchecked")
+        Class<Type> type = (Class<Type>) typeReference.getClassType();
+        if (DynamicBytes.class.isAssignableFrom(type)
+                || Utf8String.class.isAssignableFrom(type)
+                || DynamicArray.class.isAssignableFrom(type)
+                || hasDynamicOffsetInStaticArray(typeReference, offset)) {
+            return TypeDecoder.decodeUintAsInt(input, offset) << 1;
+        } else {
+            return offset;
+        }
+    }
+
+    /**
+     * Checks if the parametrized type is offsetted in case of static array containing structs.
+     *
+     * @param typeReference of static array
+     * @return true, if static array elements have dynamic offsets
+     * @throws ClassNotFoundException if class type cannot be determined
+     */
+    private static boolean hasDynamicOffsetInStaticArray(TypeReference<?> typeReference, int offset)
+            throws ClassNotFoundException {
+        @SuppressWarnings("unchecked")
+        Class<Type> type = (Class<Type>) typeReference.getClassType();
+        try {
+            return StaticArray.class.isAssignableFrom(type)
+                    && (DynamicStruct.class.isAssignableFrom(
+                    getParameterizedTypeFromArray(typeReference))
+                    || isDynamic(getParameterizedTypeFromArray(typeReference)));
+        } catch (ClassCastException e) {
+            return false;
+        }
+    }
+
 }
