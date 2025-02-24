@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
+import lombok.Getter;
 import org.bouncycastle.jcajce.provider.digest.SHA256;
 import org.tron.trident.abi.FunctionEncoder;
 import org.tron.trident.abi.datatypes.Function;
@@ -38,6 +39,7 @@ import org.tron.trident.core.contract.Contract;
 import org.tron.trident.core.contract.ContractFunction;
 import org.tron.trident.core.exceptions.IllegalException;
 import org.tron.trident.core.key.KeyPair;
+import org.tron.trident.core.transaction.BlockId;
 import org.tron.trident.core.transaction.TransactionBuilder;
 import org.tron.trident.core.transaction.TransactionCapsule;
 import org.tron.trident.core.utils.ByteArray;
@@ -139,6 +141,28 @@ public class ApiWrapper implements Api {
   public final KeyPair keyPair;
   public final ManagedChannel channel;
   public final ManagedChannel channelSolidity;
+
+  /**
+   * Specify whether to createTransaction locally (default false) without grpc request. If false, we
+   * need to query referHeadBlockId and head block time through grpc api in method
+   * {@link #createTransaction}. {@link #referHeadBlockId} and {@link #expireTimeStamp} must be
+   * valid when it is true.
+   */
+  @Getter
+  private boolean enableLocalCreateTx = false;
+  /**
+   * Used to set refer block number and hash when {@link #createTransaction} only if
+   * {@link #enableLocalCreateTx} = true. If false, use the highest solidity BlockId instead.
+   */
+  @Getter
+  private BlockId referHeadBlockId;
+  /**
+   * Used to set transaction's expiration timestamp (milliseconds) when {@link #createTransaction} only if
+   * {@link #enableLocalCreateTx} = true. If false, use the timestamp of latest head BlockId +
+   * TRANSACTION_DEFAULT_EXPIRATION_TIME instead.
+   */
+  @Getter
+  private long expireTimeStamp = -1;
 
   public ApiWrapper(String grpcEndpoint, String grpcEndpointSolidity, String hexPrivateKey) {
     channel = ManagedChannelBuilder.forTarget(grpcEndpoint).usePlaintext().build();
@@ -262,6 +286,34 @@ public class ApiWrapper implements Api {
    */
   public static ApiWrapper ofNile(String hexPrivateKey) {
     return new ApiWrapper(Constant.FULLNODE_NILE, Constant.FULLNODE_NILE_SOLIDITY, hexPrivateKey);
+  }
+
+  public synchronized void enableLocalCreate(BlockId blockId, long expireTime) {
+    this.enableLocalCreateTx = true;
+    this.referHeadBlockId = blockId;
+    this.expireTimeStamp = expireTime;
+  }
+
+  public synchronized void disableLocalCreate() {
+    this.enableLocalCreateTx = false;
+    this.referHeadBlockId = null;
+    this.expireTimeStamp = -1;
+  }
+
+  public synchronized void setReferHeadBlockId(BlockId blockId) {
+    if (!enableLocalCreateTx) {
+      throw new RuntimeException(
+          "Must enable local create transaction before set referHeadBlockId");
+    }
+    referHeadBlockId = blockId;
+  }
+
+  public synchronized void setExpireTimeStamp(long expireTime) {
+    if (!enableLocalCreateTx) {
+      throw new RuntimeException(
+          "Must enable local create transaction before set expireTimeStamp");
+    }
+    expireTimeStamp = expireTime;
   }
 
   /**
@@ -403,7 +455,7 @@ public class ApiWrapper implements Api {
 
   private TransactionCapsule createTransactionCapsuleWithoutValidate(
       Message message, Transaction.Contract.ContractType contractType,
-      BlockExtention solidHeadBlock, BlockExtention headBlock) throws Exception {
+      BlockId solidHeadBlockId, long expireTimeStamp) throws Exception {
     TransactionCapsule trx = new TransactionCapsule(message, contractType);
 
     if (contractType == Transaction.Contract.ContractType.CreateSmartContract) {
@@ -421,13 +473,8 @@ public class ApiWrapper implements Api {
     //build transaction
     trx.setTransactionCreate(false);
     //get solid head blockId
-    byte[] blockHash = Utils.getBlockId(solidHeadBlock).getBytes();
-    trx.setReference(solidHeadBlock.getBlockHeader().getRawData().getNumber(), blockHash);
-
-    //get expiration time from head block timestamp
-    long expiration = headBlock.getBlockHeader().getRawData().getTimestamp()
-        + TRANSACTION_DEFAULT_EXPIRATION_TIME;
-    trx.setExpiration(expiration);
+    trx.setReference(solidHeadBlockId.getNum(), solidHeadBlockId.getBytes());
+    trx.setExpiration(expireTimeStamp);
     trx.setTimestamp();
 
     return trx;
@@ -435,12 +482,28 @@ public class ApiWrapper implements Api {
 
   private TransactionCapsule createTransaction(
       Message message, Transaction.Contract.ContractType contractType) throws Exception {
-    BlockReq blockReq = BlockReq.newBuilder().setDetail(false).build();
-    BlockExtention solidHeadBlock = blockingStubSolidity.getBlock(blockReq);
-    BlockExtention headBlock = blockingStub.getBlock(blockReq);
+    BlockId solidHeadBlockId;
+    long transactionExpireTimeStamp;
+    if (enableLocalCreateTx) {
+      if (referHeadBlockId == null) {
+        throw new RuntimeException("referHeadBlockId must not be null");
+      }
+      if (expireTimeStamp <= 0) {
+        throw new RuntimeException("expireTimeStamp must be > 0");
+      }
+      solidHeadBlockId = referHeadBlockId;
+      transactionExpireTimeStamp = expireTimeStamp;
+    } else {
+      BlockReq blockReq = BlockReq.newBuilder().setDetail(false).build();
+      BlockExtention solidHeadBlock = blockingStubSolidity.getBlock(blockReq);
+      solidHeadBlockId = Utils.getBlockId(solidHeadBlock);
 
-    return createTransactionCapsuleWithoutValidate(message, contractType, solidHeadBlock,
-        headBlock);
+      BlockExtention headBlock = blockingStub.getBlock(blockReq);
+      transactionExpireTimeStamp = headBlock.getBlockHeader().getRawData().getTimestamp()
+          + TRANSACTION_DEFAULT_EXPIRATION_TIME;
+    }
+    return createTransactionCapsuleWithoutValidate(message, contractType,
+        solidHeadBlockId, transactionExpireTimeStamp);
   }
 
   /**
