@@ -19,7 +19,7 @@ Trident-java is compiled with java version 1.8 and gradle 7.6.
 ### Gradle
 
 ```groovy
-    implementation("io.github.tronprotocol:trident:0.9.2")
+implementation("io.github.tronprotocol:trident:0.9.2")
 ```
 
 ### Maven
@@ -110,6 +110,11 @@ We're very glad and appreciate to have contributions from the community.
 
 Refer to our [contributing guide ](CONTRIBUTING.md)for more information.
 
-## Licence
+## Integrity Check
 
-Trident is distributed under a MIT licence.
+Starting from version 0.9.2, releases are published to Maven repository and signed with the gpg key:
+
+```
+pub: 3149 FCA5 6377 2D11 2624 9C36 CC3F 8CEA 7B0C 74D6
+uid: buildtrident@tron.network
+```
