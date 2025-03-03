@@ -17,12 +17,12 @@ package org.tron.trident.core.utils;
  * limitations under the License.
  */
 
+import static com.google.common.base.Preconditions.checkArgument;
+
 import com.google.common.io.ByteStreams;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 import com.google.protobuf.ByteString;
-import org.bouncycastle.crypto.digests.SM3Digest;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -31,8 +31,7 @@ import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
-
-import static com.google.common.base.Preconditions.checkArgument;
+import org.bouncycastle.crypto.digests.SM3Digest;
 
 
 /**
@@ -85,7 +84,7 @@ public class Sha256Hash implements Serializable, Comparable<Sha256Hash> {
   }
 
   /**
-   * Use {@link #of(byte[])} instead: this old name is ambiguous.
+   * Use {@link #of(boolean, byte[])} instead: this old name is ambiguous.
    */
   @Deprecated
   public static Sha256Hash create(boolean isSha256, byte[] contents) {
@@ -119,7 +118,7 @@ public class Sha256Hash implements Serializable, Comparable<Sha256Hash> {
   }
 
   /**
-   * Use {@link #twiceOf(byte[])} instead: this old name is ambiguous.
+   * Use {@link #twiceOf(boolean, byte[])} instead: this old name is ambiguous.
    */
   @Deprecated
   public static Sha256Hash createDouble(boolean isSha256, byte[] contents) {
@@ -231,7 +230,7 @@ public class Sha256Hash implements Serializable, Comparable<Sha256Hash> {
 
   /**
    * Calculates the hash of hash on the given byte ranges. This is equivalent to concatenating the
-   * two ranges and then passing the result to {@link #hashTwice(byte[])}.
+   * two ranges and then passing the result to {@link #hashTwice(boolean,byte[])}.
    */
   public static byte[] hashTwice(boolean isSha256, byte[] input1, int offset1, int length1,
       byte[] input2, int offset2, int length2) {

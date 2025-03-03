@@ -10,16 +10,16 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
  */
+
 package org.tron.trident.crypto.tuwenitypes;
-
-import io.vertx.core.buffer.Buffer;
-
-import java.nio.ByteBuffer;
-import java.security.MessageDigest;
-import java.util.Arrays;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkElementIndex;
+
+import io.vertx.core.buffer.Buffer;
+import java.nio.ByteBuffer;
+import java.security.MessageDigest;
+import java.util.Arrays;
 
 class ArrayWrappingBytes extends AbstractBytes {
 

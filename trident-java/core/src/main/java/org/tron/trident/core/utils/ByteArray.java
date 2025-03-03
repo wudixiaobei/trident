@@ -2,11 +2,10 @@ package org.tron.trident.core.utils;
 
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
-import org.bouncycastle.util.encoders.Hex;
-
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
+import org.bouncycastle.util.encoders.Hex;
 
 /*
  * Copyright (c) [2016] [ <ether.camp> ]
@@ -30,7 +29,9 @@ public class ByteArray {
   public static String toHexString(byte[] data) {
     return data == null ? "" : Hex.toHexString(data);
   }
+
   public static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
+
   /**
    * get bytes data from hex string data.
    */
@@ -79,7 +80,6 @@ public class ByteArray {
   }
 
 
-
   public static int jsonHexToInt(String x) throws Exception {
     if (!x.startsWith("0x")) {
       throw new Exception("Incorrect hex syntax");
@@ -125,4 +125,16 @@ public class ByteArray {
     }
     return x;
   }
+
+  public static boolean isHexString(String str) {
+    boolean bRet = false;
+    try {
+      ByteArray.fromHexString(str);
+      bRet = true;
+    } catch (Exception ignored) {
+      return false;
+    }
+    return bRet;
+  }
+
 }

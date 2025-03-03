@@ -10,15 +10,15 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
  */
+
 package org.tron.trident.crypto.tuwenitypes;
 
-import io.vertx.core.buffer.Buffer;
+import static com.google.common.base.Preconditions.checkArgument;
 
+import io.vertx.core.buffer.Buffer;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
-
-import static com.google.common.base.Preconditions.checkArgument;
 
 final class DelegatingMutableBytes32 implements MutableBytes32 {
 

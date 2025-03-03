@@ -10,8 +10,8 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
  */
-package org.tron.trident.crypto.tuwenitypes;
 
+package org.tron.trident.crypto.tuwenitypes;
 
 import java.math.BigInteger;
 
@@ -31,7 +31,7 @@ import java.math.BigInteger;
  * Where only a pure numerical 256-bit value is required, {@link UInt256} should be used.
  *
  * <p>
- * It is strongly advised to extend {@link BaseUInt256Value} rather than implementing this interface directly. Doing so
+ * It is strongly advised to extend BaseUInt256Value rather than implementing this interface directly. Doing so
  * provides type safety in that quantities of different units cannot be mixed accidentally.
  *
  * @param <T> The concrete type of the value.
@@ -40,7 +40,7 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
 
   /**
    * Returns true is the value is 0.
-   * 
+   *
    * @return True if this is the value 0.
    */
   default boolean isZero() {
@@ -54,6 +54,14 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
    * @return {@code this + value}
    */
   T add(T value);
+
+  /**
+   * Returns a value that is {@code (this + value)}.
+   *
+   * @param value The amount to be added to this value.
+   * @return {@code this + value}
+   */
+  T add(long value);
 
   /**
    * Returns a value that is {@code (this + value)}.
@@ -95,14 +103,6 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
     }
     return result;
   }
-
-  /**
-   * Returns a value that is {@code (this + value)}.
-   *
-   * @param value The amount to be added to this value.
-   * @return {@code this + value}
-   */
-  T add(long value);
 
   /**
    * Returns a value that is {@code (this + value)}.
@@ -160,6 +160,14 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
   /**
    * Returns a value that is {@code (this - value)}.
    *
+   * @param value The amount to be subtracted from this value.
+   * @return {@code this - value}
+   */
+  T subtract(long value);
+
+  /**
+   * Returns a value that is {@code (this - value)}.
+   *
    * @param value the amount to be subtracted to this value
    * @return {@code this - value}
    * @throws ArithmeticException if the result of the addition overflows
@@ -171,14 +179,6 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
     }
     return result;
   }
-
-  /**
-   * Returns a value that is {@code (this - value)}.
-   *
-   * @param value The amount to be subtracted from this value.
-   * @return {@code this - value}
-   */
-  T subtract(long value);
 
   /**
    * Returns a value that is {@code (this - value)}.
@@ -346,8 +346,9 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
     // Ints are 4 bytes, so anything but the 4 last bytes must be zeroes
     Bytes32 bytes = toBytes();
     for (int i = 0; i < Bytes32.SIZE - 4; i++) {
-      if (bytes.get(i) != 0)
+      if (bytes.get(i) != 0) {
         return false;
+      }
     }
     // Lastly, the left-most byte of the int must not start with a 1.
     return bytes.get(Bytes32.SIZE - 4) >= 0;
@@ -374,8 +375,9 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
   default boolean fitsLong() {
     // Longs are 8 bytes, so anything but the 8 last bytes must be zeroes
     for (int i = 0; i < Bytes32.SIZE - 8; i++) {
-      if (toBytes().get(i) != 0)
+      if (toBytes().get(i) != 0) {
         return false;
+      }
     }
     // Lastly, the left-most byte of the long must not start with a 1.
     return toBytes().get(Bytes32.SIZE - 8) >= 0;
@@ -419,7 +421,7 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
 
   /**
    * Returns this value represented as a minimal hexadecimal string (without any leading zero)
-   * 
+   *
    * @return This value represented as a minimal hexadecimal string (without any leading zero).
    */
   default String toShortHexString() {
@@ -435,14 +437,14 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
 
   /**
    * Provides the value as bytes.
-   * 
+   *
    * @return The value as bytes.
    */
   Bytes32 toBytes();
 
   /**
    * Provides the value as bytes without any leading zero bytes.
-   * 
+   *
    * @return The value as bytes without any leading zero bytes.
    */
   Bytes toMinimalBytes();
@@ -451,7 +453,7 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
    * Provides the number of zero bits preceding the highest-order one-bit.
    *
    * @return the number of zero bits preceding the highest-order ("leftmost") one-bit in the binary representation of
-   *         this value, or 256 if the value is equal to zero.
+   * this value, or 256 if the value is equal to zero.
    */
   default int numberOfLeadingZeros() {
     return toBytes().numberOfLeadingZeros();
@@ -460,9 +462,9 @@ public interface UInt256Value<T extends UInt256Value<T>> extends Comparable<T> {
   /**
    * Provides the number of bits following and including the highest-order ("leftmost") one-bit in the binary
    * representation of this value, or zero if all bits are zero.
-   * 
+   *
    * @return The number of bits following and including the highest-order ("leftmost") one-bit in the binary
-   *         representation of this value, or zero if all bits are zero.
+   * representation of this value, or zero if all bits are zero.
    */
   default int bitLength() {
     return toBytes().bitLength();
