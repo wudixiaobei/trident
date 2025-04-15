@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.Map;
 import org.tron.trident.abi.datatypes.Function;
 import org.tron.trident.abi.datatypes.Type;
-import org.tron.trident.api.GrpcAPI;
 import org.tron.trident.api.GrpcAPI.NumberMessage;
+import org.tron.trident.api.GrpcAPI.TransactionIdList;
 import org.tron.trident.core.contract.Contract;
 import org.tron.trident.core.exceptions.IllegalException;
 import org.tron.trident.core.key.KeyPair;
@@ -18,7 +18,6 @@ import org.tron.trident.proto.Common.SmartContract;
 import org.tron.trident.proto.Contract.AccountPermissionUpdateContract;
 import org.tron.trident.proto.Contract.AssetIssueContract;
 import org.tron.trident.proto.Contract.CreateSmartContract;
-import org.tron.trident.proto.Response;
 import org.tron.trident.proto.Response.Account;
 import org.tron.trident.proto.Response.AccountNetMessage;
 import org.tron.trident.proto.Response.AccountResourceMessage;
@@ -29,6 +28,7 @@ import org.tron.trident.proto.Response.BlockListExtention;
 import org.tron.trident.proto.Response.ChainParameters;
 import org.tron.trident.proto.Response.DelegatedResourceAccountIndex;
 import org.tron.trident.proto.Response.DelegatedResourceList;
+import org.tron.trident.proto.Response.EstimateEnergyMessage;
 import org.tron.trident.proto.Response.Exchange;
 import org.tron.trident.proto.Response.ExchangeList;
 import org.tron.trident.proto.Response.MarketOrder;
@@ -37,6 +37,7 @@ import org.tron.trident.proto.Response.MarketOrderPairList;
 import org.tron.trident.proto.Response.MarketPriceList;
 import org.tron.trident.proto.Response.NodeInfo;
 import org.tron.trident.proto.Response.NodeList;
+import org.tron.trident.proto.Response.PricesResponseMessage;
 import org.tron.trident.proto.Response.Proposal;
 import org.tron.trident.proto.Response.ProposalList;
 import org.tron.trident.proto.Response.SmartContractDataWrapper;
@@ -101,17 +102,19 @@ public interface Api {
 
   TransactionExtention withdrawExpireUnfreeze(String ownerAddress) throws IllegalException;
 
-  long getAvailableUnfreezeCount(String ownerAddress);
+  long getAvailableUnfreezeCount(String ownerAddress, NodeType... nodeType);
 
-  long getCanWithdrawUnfreezeAmount(String ownerAddress);
+  long getCanWithdrawUnfreezeAmount(String ownerAddress, NodeType... nodeType);
 
-  long getCanWithdrawUnfreezeAmount(String ownerAddress, long timestamp);
+  long getCanWithdrawUnfreezeAmount(String ownerAddress, long timestamp, NodeType... nodeType);
 
-  long getCanDelegatedMaxSize(String ownerAddress, int type);
+  long getCanDelegatedMaxSize(String ownerAddress, int type, NodeType... nodeType);
 
-  DelegatedResourceList getDelegatedResourceV2(String fromAddress, String toAddress);
+  DelegatedResourceList getDelegatedResourceV2(String fromAddress, String toAddress,
+      NodeType... nodeType);
 
-  DelegatedResourceAccountIndex getDelegatedResourceAccountIndexV2(String address)
+  DelegatedResourceAccountIndex getDelegatedResourceAccountIndexV2(String address,
+      NodeType... nodeType)
       throws IllegalException;
 
   TransactionExtention voteWitness(String ownerAddress, HashMap<String, String> votes)
@@ -123,9 +126,11 @@ public interface Api {
   //only if account.getAccountName() == null can update name
   TransactionExtention updateAccount(String address, String accountName) throws IllegalException;
 
-  Block getNowBlock() throws IllegalException;
+  Block getNowBlock(NodeType... nodeType) throws IllegalException;
 
-  BlockExtention getBlockByNum(long blockNum) throws IllegalException;
+  BlockExtention getNowBlock2(NodeType... nodeType) throws IllegalException;
+
+  BlockExtention getBlockByNum(long blockNum, NodeType... nodeType) throws IllegalException;
 
   BlockListExtention getBlockByLatestNum(long num) throws IllegalException;
 
@@ -135,13 +140,14 @@ public interface Api {
 
   NodeList listNodes() throws IllegalException;
 
-  TransactionInfoList getTransactionInfoByBlockNum(long blockNum) throws IllegalException;
+  TransactionInfoList getTransactionInfoByBlockNum(long blockNum, NodeType... nodeType)
+      throws IllegalException;
 
-  TransactionInfo getTransactionInfoById(String txID) throws IllegalException;
+  TransactionInfo getTransactionInfoById(String txID, NodeType... nodeType) throws IllegalException;
 
-  Transaction getTransactionById(String txID) throws IllegalException;
+  Transaction getTransactionById(String txID, NodeType... nodeType) throws IllegalException;
 
-  Account getAccount(String address);
+  Account getAccount(String address, NodeType... nodeType);
 
   AccountResourceMessage getAccountResource(String address);
 
@@ -149,7 +155,7 @@ public interface Api {
 
   long getAccountBalance(String address);
 
-  Account getAccountById(String id);
+  Account getAccountById(String id, NodeType... nodeType);
 
   Transaction setAccountId(String id, String address) throws IllegalException;
 
@@ -158,21 +164,23 @@ public interface Api {
 
   ChainParameters getChainParameters() throws IllegalException;
 
-  DelegatedResourceList getDelegatedResource(String fromAddress, String toAddress);
+  DelegatedResourceList getDelegatedResource(String fromAddress,
+      String toAddress, NodeType... nodeType);
 
-  DelegatedResourceAccountIndex getDelegatedResourceAccountIndex(String address);
+  DelegatedResourceAccountIndex getDelegatedResourceAccountIndex(String address,
+      NodeType... nodeType);
 
-  AssetIssueList getAssetIssueList();
+  AssetIssueList getAssetIssueList(NodeType... nodeType);
 
-  AssetIssueList getPaginatedAssetIssueList(long offset, long limit);
+  AssetIssueList getPaginatedAssetIssueList(long offset, long limit, NodeType... nodeType);
 
   AssetIssueList getAssetIssueByAccount(String address);
 
-  AssetIssueContract getAssetIssueById(String assetId);
+  AssetIssueContract getAssetIssueById(String assetId, NodeType... nodeType);
 
-  AssetIssueContract getAssetIssueByName(String name);
+  AssetIssueContract getAssetIssueByName(String name, NodeType... nodeType);
 
-  AssetIssueList getAssetIssueListByName(String name);
+  AssetIssueList getAssetIssueListByName(String name, NodeType... nodeType);
 
   TransactionExtention participateAssetIssue(String toAddress, String ownerAddress,
       String assertName, long amount) throws IllegalException;
@@ -182,11 +190,11 @@ public interface Api {
   //1-17
   Proposal getProposalById(String id);
 
-  WitnessList listWitnesses();
+  WitnessList listWitnesses(NodeType... nodeType);
 
-  ExchangeList listExchanges();
+  ExchangeList listExchanges(NodeType... nodeType);
 
-  Exchange getExchangeById(String id) throws IllegalException;
+  Exchange getExchangeById(String id, NodeType... nodeType) throws IllegalException;
 
   TransactionExtention createAssetIssue(String ownerAddress, String name, String abbr,
       long totalSupply, int trxNum, int icoNum, long startTime, long endTime, String url,
@@ -215,19 +223,26 @@ public interface Api {
 
   TransactionApprovedList getTransactionApprovedList(Transaction trx);
 
+  @Deprecated
   Account getAccountSolidity(String address);
 
+  @Deprecated
   TransactionInfoList getTransactionInfoByBlockNumSolidity(long blockNum) throws IllegalException;
 
+  @Deprecated
   BlockExtention getNowBlockSolidity() throws IllegalException;
 
+  @Deprecated
   Transaction getTransactionByIdSolidity(String txID) throws IllegalException;
 
+  @Deprecated
   NumberMessage getRewardSolidity(String address);
+
+  NumberMessage getRewardInfo(String address, NodeType... nodeType);
 
   TransactionExtention updateBrokerage(String address, int brokerage) throws IllegalException;
 
-  long getBrokerageInfo(String address);
+  long getBrokerageInfo(String address, NodeType... nodeType);
 
   Contract getContract(String contractAddress);
 
@@ -245,7 +260,7 @@ public interface Api {
 
   BlockBalanceTrace getBlockBalance(String blockId, long blockNum);
 
-  long getBurnTRX();
+  long getBurnTRX(NodeType... nodeType);
 
   TransactionExtention createWitness(String ownerAddress, String url) throws IllegalException;
 
@@ -263,7 +278,7 @@ public interface Api {
 
   TransactionExtention deleteProposal(String ownerAddress, long proposalId) throws IllegalException;
 
-  GrpcAPI.TransactionIdList getTransactionListFromPending();
+  TransactionIdList getTransactionListFromPending();
 
   long getPendingSize();
 
@@ -271,14 +286,14 @@ public interface Api {
 
   Block getBlockById(String blockID);
 
-  Response.EstimateEnergyMessage estimateEnergy(String ownerAddress, String contractAddress,
-      Function function);
+  EstimateEnergyMessage estimateEnergy(String ownerAddress, String contractAddress,
+      Function function, NodeType... nodeType);
 
-  Response.EstimateEnergyMessage estimateEnergy(String ownerAddress,
-      String contractAddress, String callData, long callValue, long tokenValue, String tokenId);
+  EstimateEnergyMessage estimateEnergy(String ownerAddress, String contractAddress,
+      String callData, long callValue, long tokenValue, String tokenId, NodeType... nodeType);
 
   @Deprecated
-  Response.EstimateEnergyMessage estimateEnergyV2(String ownerAddress, String contractAddress,
+  EstimateEnergyMessage estimateEnergyV2(String ownerAddress, String contractAddress,
       String callData);
 
   @Deprecated
@@ -288,23 +303,25 @@ public interface Api {
   TransactionExtention constantCallV2(String ownerAddress, String contractAddress, String callData);
 
   TransactionExtention triggerConstantContract(String ownerAddress, String contractAddress,
-      Function function);
+      Function function, NodeType... nodeType);
 
   TransactionExtention triggerConstantContract(String ownerAddress, String contractAddress,
-      String callData);
+      String callData, NodeType... nodeType);
 
   TransactionExtention triggerConstantContract(String ownerAddress, String contractAddress,
-      String callData, long callValue, long tokenValue, String tokenId);
+      String callData, long callValue, long tokenValue, String tokenId, NodeType... nodeType);
 
-  Response.PricesResponseMessage getBandwidthPrices();
+  PricesResponseMessage getBandwidthPrices(NodeType... nodeType);
 
-  Response.PricesResponseMessage getEnergyPrices();
+  PricesResponseMessage getEnergyPrices(NodeType... nodeType);
 
-  Response.PricesResponseMessage getMemoFee();
+  PricesResponseMessage getMemoFee();
 
-  Response.PricesResponseMessage getBandwidthPricesOnSolidity();
+  @Deprecated
+  PricesResponseMessage getBandwidthPricesOnSolidity();
 
-  Response.PricesResponseMessage getEnergyPricesOnSolidity();
+  @Deprecated
+  PricesResponseMessage getEnergyPricesOnSolidity();
 
   TransactionExtention clearContractABI(String ownerAddress, String contractAddress)
       throws IllegalException;
@@ -313,23 +330,24 @@ public interface Api {
 
   ProposalList getPaginatedProposalList(long offset, long limit);
 
-  BlockExtention getBlock(String blockIDOrNum, boolean detail);
+  BlockExtention getBlock(String blockIDOrNum, boolean detail, NodeType... nodeType);
 
-  BlockExtention getBlock(boolean detail);
+  BlockExtention getBlock(boolean detail, NodeType... nodeType);
 
   Block getBlockByIdOrNum(String blockIDOrNum);
 
   SmartContractDataWrapper getContractInfo(String contractAddr);
 
-  MarketOrderList getMarketOrderByAccount(String account);
+  MarketOrderList getMarketOrderByAccount(String account, NodeType... nodeType);
 
-  MarketOrder getMarketOrderById(String txn);
+  MarketOrder getMarketOrderById(String txn, NodeType... nodeType);
 
-  MarketOrderList getMarketOrderListByPair(String sellTokenId, String buyTokenId);
+  MarketOrderList getMarketOrderListByPair(String sellTokenId, String buyTokenId,
+      NodeType... nodeType);
 
-  MarketOrderPairList getMarketPairList();
+  MarketOrderPairList getMarketPairList(NodeType... nodeType);
 
-  MarketPriceList getMarketPriceByPair(String sellTokenId, String buyTokenId);
+  MarketPriceList getMarketPriceByPair(String sellTokenId, String buyTokenId, NodeType... nodeType);
 
   TransactionExtention exchangeCreate(String ownerAddress, String firstToken, long firstBalance,
       String secondToken, long secondBalance) throws IllegalException;
@@ -343,7 +361,7 @@ public interface Api {
   TransactionExtention exchangeWithdraw(String ownerAddress, long exchangeId, String tokenId,
       long quant) throws IllegalException;
 
-  long getTransactionCountByBlockNum(long blockNum);
+  long getTransactionCountByBlockNum(long blockNum, NodeType... nodeType);
 
   TransactionExtention marketCancelOrder(String ownerAddress, String orderId)
       throws IllegalException;
@@ -369,4 +387,5 @@ public interface Api {
   TransactionExtention deployContract(String contractName, String abiStr, String bytecode,
       List<Type<?>> constructorParams, long feeLimit, long consumeUserResourcePercent,
       long originEnergyLimit, long callValue, String tokenId, long tokenValue) throws Exception;
+
 }

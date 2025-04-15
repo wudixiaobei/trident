@@ -25,15 +25,21 @@ import org.bouncycastle.jcajce.provider.digest.SHA256;
 import org.tron.trident.abi.FunctionEncoder;
 import org.tron.trident.abi.datatypes.Function;
 import org.tron.trident.abi.datatypes.Type;
-import org.tron.trident.api.GrpcAPI;
 import org.tron.trident.api.GrpcAPI.AccountAddressMessage;
 import org.tron.trident.api.GrpcAPI.AccountIdMessage;
 import org.tron.trident.api.GrpcAPI.BlockLimit;
 import org.tron.trident.api.GrpcAPI.BlockReq;
 import org.tron.trident.api.GrpcAPI.BytesMessage;
+import org.tron.trident.api.GrpcAPI.CanDelegatedMaxSizeRequestMessage;
+import org.tron.trident.api.GrpcAPI.CanDelegatedMaxSizeResponseMessage;
+import org.tron.trident.api.GrpcAPI.CanWithdrawUnfreezeAmountRequestMessage;
+import org.tron.trident.api.GrpcAPI.CanWithdrawUnfreezeAmountResponseMessage;
 import org.tron.trident.api.GrpcAPI.EmptyMessage;
+import org.tron.trident.api.GrpcAPI.GetAvailableUnfreezeCountRequestMessage;
+import org.tron.trident.api.GrpcAPI.GetAvailableUnfreezeCountResponseMessage;
 import org.tron.trident.api.GrpcAPI.NumberMessage;
 import org.tron.trident.api.GrpcAPI.PaginatedMessage;
+import org.tron.trident.api.GrpcAPI.TransactionIdList;
 import org.tron.trident.api.WalletGrpc;
 import org.tron.trident.api.WalletSolidityGrpc;
 import org.tron.trident.core.contract.Contract;
@@ -110,6 +116,7 @@ import org.tron.trident.proto.Response.MarketOrderPairList;
 import org.tron.trident.proto.Response.MarketPriceList;
 import org.tron.trident.proto.Response.NodeInfo;
 import org.tron.trident.proto.Response.NodeList;
+import org.tron.trident.proto.Response.PricesResponseMessage;
 import org.tron.trident.proto.Response.Proposal;
 import org.tron.trident.proto.Response.ProposalList;
 import org.tron.trident.proto.Response.SmartContractDataWrapper;
@@ -382,6 +389,46 @@ public class ApiWrapper implements Api {
 
   public static String toHex(ByteString raw) {
     return toHex(raw.toByteArray());
+  }
+
+  /**
+   * Check if using solidity node
+   * Only SOLIDITY_NODE and FULL_NODE are accepted as valid inputs.
+   *
+   * @param nodeType Optional node type array
+   * @return true if the node type is SOLIDITY_NODE, false otherwise
+   * @throws IllegalArgumentException if the input is null, empty, or contains invalid node type
+   */
+  private boolean useSolidityNode(NodeType... nodeType) {
+
+    // check null
+    if (nodeType == null) {
+      throw new IllegalArgumentException("nodeType should not be null");
+    }
+
+    // When no parameter is provided, treat as FULL_NODE
+    if (nodeType.length == 0) {
+      return false;
+    }
+
+    // Validate that the node type is not null
+    if (nodeType[0] == null) {
+      throw new IllegalArgumentException("nodeType element should not be null");
+    }
+
+    // Validate that the node type is either SOLIDITY_NODE or FULL_NODE
+    if (nodeType[0] != NodeType.SOLIDITY_NODE && nodeType[0] != NodeType.FULL_NODE) {
+      throw new IllegalArgumentException(
+          String.format("nodeType must be either SOLIDITY_NODE or FULL_NODE, but got: %s",
+              nodeType[0])
+      );
+    }
+
+    if (nodeType.length > 1) {
+      throw new IllegalArgumentException("only one nodeType is allowed");
+    }
+
+    return nodeType[0] == NodeType.SOLIDITY_NODE;
   }
 
   public static VoteWitnessContract createVoteWitnessContract(ByteString ownerAddress,
@@ -954,16 +1001,24 @@ public class ApiWrapper implements Api {
    * query remaining times of executing unstake operation
    *
    * @param ownerAddress owner address
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
+   *
+   * @return remaining times of executing unstake operation
    */
   @Override
-  public long getAvailableUnfreezeCount(String ownerAddress) {
+  public long getAvailableUnfreezeCount(String ownerAddress, NodeType... nodeType) {
     ByteString rawOwner = parseAddress(ownerAddress);
-    GrpcAPI.GetAvailableUnfreezeCountRequestMessage getAvailableUnfreezeCountRequestMessage =
-        GrpcAPI.GetAvailableUnfreezeCountRequestMessage.newBuilder()
+    GetAvailableUnfreezeCountRequestMessage requestMessage =
+        GetAvailableUnfreezeCountRequestMessage.newBuilder()
             .setOwnerAddress(rawOwner)
             .build();
-    GrpcAPI.GetAvailableUnfreezeCountResponseMessage responseMessage =
-        blockingStub.getAvailableUnfreezeCount(getAvailableUnfreezeCountRequestMessage);
+
+    GetAvailableUnfreezeCountResponseMessage responseMessage =
+        useSolidityNode(nodeType)
+            ? blockingStubSolidity.getAvailableUnfreezeCount(requestMessage)
+            : blockingStub.getAvailableUnfreezeCount(requestMessage);
 
     return responseMessage.getCount();
   }
@@ -973,17 +1028,23 @@ public class ApiWrapper implements Api {
    * query the withdrawable balance at the latest block timestamp
    *
    * @param ownerAddress owner address
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
+   * @return withdrawable balance amount
    */
   @Override
-  public long getCanWithdrawUnfreezeAmount(String ownerAddress) {
+  public long getCanWithdrawUnfreezeAmount(String ownerAddress, NodeType... nodeType) {
     ByteString rawOwner = parseAddress(ownerAddress);
-    GrpcAPI.CanWithdrawUnfreezeAmountRequestMessage getAvailableUnfreezeCountRequestMessage =
-        GrpcAPI.CanWithdrawUnfreezeAmountRequestMessage.newBuilder()
+    CanWithdrawUnfreezeAmountRequestMessage request =
+        CanWithdrawUnfreezeAmountRequestMessage.newBuilder()
             .setOwnerAddress(rawOwner)
             .build();
-    GrpcAPI.CanWithdrawUnfreezeAmountResponseMessage responseMessage =
-        blockingStub.getCanWithdrawUnfreezeAmount(
-            getAvailableUnfreezeCountRequestMessage);
+
+    CanWithdrawUnfreezeAmountResponseMessage responseMessage =
+        useSolidityNode(nodeType)
+            ? blockingStubSolidity.getCanWithdrawUnfreezeAmount(request)
+            : blockingStub.getCanWithdrawUnfreezeAmount(request);
 
     return responseMessage.getAmount();
   }
@@ -994,18 +1055,25 @@ public class ApiWrapper implements Api {
    *
    * @param ownerAddress owner address
    * @param timestamp specified timestamp, milliseconds
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
+   * @return withdrawable balance amount
    */
   @Override
-  public long getCanWithdrawUnfreezeAmount(String ownerAddress, long timestamp) {
+  public long getCanWithdrawUnfreezeAmount(String ownerAddress,
+      long timestamp, NodeType... nodeType) {
     ByteString rawOwner = parseAddress(ownerAddress);
-    GrpcAPI.CanWithdrawUnfreezeAmountRequestMessage getAvailableUnfreezeCountRequestMessage =
-        GrpcAPI.CanWithdrawUnfreezeAmountRequestMessage.newBuilder()
+    CanWithdrawUnfreezeAmountRequestMessage request =
+        CanWithdrawUnfreezeAmountRequestMessage.newBuilder()
             .setOwnerAddress(rawOwner)
             .setTimestamp(timestamp)
             .build();
-    GrpcAPI.CanWithdrawUnfreezeAmountResponseMessage responseMessage =
-        blockingStub.getCanWithdrawUnfreezeAmount(
-            getAvailableUnfreezeCountRequestMessage);
+
+    CanWithdrawUnfreezeAmountResponseMessage responseMessage =
+        useSolidityNode(nodeType)
+            ? blockingStubSolidity.getCanWithdrawUnfreezeAmount(request)
+            : blockingStub.getCanWithdrawUnfreezeAmount(request);
 
     return responseMessage.getAmount();
   }
@@ -1016,17 +1084,23 @@ public class ApiWrapper implements Api {
    *
    * @param ownerAddress owner address
    * @param type resource type, 0 is bandwidth, 1 is energy
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
+   * @return the max amount of delegatable resources
    */
   @Override
-  public long getCanDelegatedMaxSize(String ownerAddress, int type) {
+  public long getCanDelegatedMaxSize(String ownerAddress, int type, NodeType... nodeType) {
     ByteString rawFrom = parseAddress(ownerAddress);
-    GrpcAPI.CanDelegatedMaxSizeRequestMessage getAvailableUnfreezeCountRequestMessage =
-        GrpcAPI.CanDelegatedMaxSizeRequestMessage.newBuilder()
+    CanDelegatedMaxSizeRequestMessage request =
+        CanDelegatedMaxSizeRequestMessage.newBuilder()
             .setOwnerAddress(rawFrom)
             .setType(type)
             .build();
-    GrpcAPI.CanDelegatedMaxSizeResponseMessage responseMessage =
-        blockingStub.getCanDelegatedMaxSize(getAvailableUnfreezeCountRequestMessage);
+    CanDelegatedMaxSizeResponseMessage responseMessage =
+        useSolidityNode(nodeType)
+            ? blockingStubSolidity.getCanDelegatedMaxSize(request)
+            : blockingStub.getCanDelegatedMaxSize(request);
 
     return responseMessage.getMaxSize();
   }
@@ -1037,37 +1111,49 @@ public class ApiWrapper implements Api {
    *
    * @param fromAddress from address
    * @param toAddress to address
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return DelegatedResourceList
    */
   @Override
-  public DelegatedResourceList getDelegatedResourceV2(String fromAddress, String toAddress) {
+  public DelegatedResourceList getDelegatedResourceV2(
+      String fromAddress, String toAddress, NodeType... nodeType) {
+
     ByteString rawFrom = parseAddress(fromAddress);
     ByteString rawTo = parseAddress(toAddress);
-    DelegatedResourceMessage delegatedResourceMessage =
+    DelegatedResourceMessage request =
         DelegatedResourceMessage.newBuilder()
             .setFromAddress(rawFrom)
             .setToAddress(rawTo)
             .build();
-    return blockingStub.getDelegatedResourceV2(delegatedResourceMessage);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getDelegatedResourceV2(request)
+        : blockingStub.getDelegatedResourceV2(request);
   }
 
   /**
    * Stake2.0 API
-   * query the resource delegation index by an account.
+   * query the delegated resource index of an account.
    *
-   * @param address address
+   * @param address owner address
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return DelegatedResourceAccountIndex
-   * @throws IllegalException if fail to freeze balance
+   * @throws IllegalException if fail to get resource
    */
   @Override
-  public DelegatedResourceAccountIndex getDelegatedResourceAccountIndexV2(String address)
-      throws IllegalException {
+  public DelegatedResourceAccountIndex getDelegatedResourceAccountIndexV2(
+      String address, NodeType... nodeType) throws IllegalException {
+
     ByteString rawAddress = parseAddress(address);
     BytesMessage request = BytesMessage.newBuilder()
         .setValue(rawAddress)
         .build();
-    return blockingStub.getDelegatedResourceAccountIndexV2(
-        request);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getDelegatedResourceAccountIndexV2(request)
+        : blockingStub.getDelegatedResourceAccountIndexV2(request);
   }
 
   /**
@@ -1134,12 +1220,17 @@ public class ApiWrapper implements Api {
   /**
    * Query the latest block information
    *
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return Block
    * @throws IllegalException if fail to get now block
    */
   @Override
-  public Block getNowBlock() throws IllegalException {
-    Block block = blockingStub.getNowBlock(EmptyMessage.newBuilder().build());
+  public Block getNowBlock(NodeType... nodeType) throws IllegalException {
+    Block block = useSolidityNode(nodeType)
+        ? blockingStubSolidity.getNowBlock(EmptyMessage.newBuilder().build())
+        : blockingStub.getNowBlock(EmptyMessage.newBuilder().build());
     if (!block.hasBlockHeader()) {
       throw new IllegalException("Fail to get latest block.");
     }
@@ -1147,17 +1238,44 @@ public class ApiWrapper implements Api {
   }
 
   /**
-   * Returns the Block Object corresponding to the 'Block Height' specified (number of blocks preceding it)
+   * Query the latest block information
    *
-   * @param blockNum The block height
-   * @return BlockExtention block details
-   * @throws IllegalException if the parameters are not correct
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
+   * @return BlockExtention
+   * @throws IllegalException if fail to get now block
    */
   @Override
-  public BlockExtention getBlockByNum(long blockNum) throws IllegalException {
+  public BlockExtention getNowBlock2(NodeType... nodeType) throws IllegalException {
+    BlockExtention block = useSolidityNode(nodeType)
+        ? blockingStubSolidity.getNowBlock2(EmptyMessage.newBuilder().build())
+        : blockingStub.getNowBlock2(EmptyMessage.newBuilder().build());
+    if (!block.hasBlockHeader()) {
+      throw new IllegalException("Fail to get latest block.");
+    }
+    return block;
+  }
+
+  /**
+   * Query block information by block height,  it called getBlockByNum2 rpc
+   *
+   * @param blockNum The block height
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
+   * @return BlockExtention
+   * @throws IllegalException if fail to get block
+   */
+  @Override
+  public BlockExtention getBlockByNum(long blockNum, NodeType... nodeType)
+      throws IllegalException {
     NumberMessage.Builder builder = NumberMessage.newBuilder();
     builder.setNum(blockNum);
-    BlockExtention block = blockingStub.getBlockByNum2(builder.build());
+    BlockExtention block =
+        useSolidityNode(nodeType)
+            ? blockingStubSolidity.getBlockByNum2(builder.build())
+            : blockingStub.getBlockByNum2(builder.build());
 
     if (!block.hasBlockHeader()) {
       throw new IllegalException();
@@ -1175,6 +1293,7 @@ public class ApiWrapper implements Api {
   @Override
   public BlockListExtention getBlockByLatestNum(long num) throws IllegalException {
     NumberMessage numberMessage = NumberMessage.newBuilder().setNum(num).build();
+    //not support SolidityNode
     BlockListExtention blockListExtention = blockingStub.getBlockByLatestNum2(numberMessage);
 
     if (blockListExtention.getBlockCount() == 0) {
@@ -1199,6 +1318,7 @@ public class ApiWrapper implements Api {
         .setStartNum(startNum)
         .setEndNum(endNum)
         .build();
+    // not support SolidityNode
     BlockListExtention blockListExtention = blockingStub.getBlockByLimitNext2(blockLimit);
 
     if (endNum - startNum > 100) {
@@ -1219,6 +1339,7 @@ public class ApiWrapper implements Api {
    */
   @Override
   public NodeInfo getNodeInfo() throws IllegalException {
+    //not support SolidityNode
     NodeInfo nodeInfo = blockingStub.getNodeInfo(EmptyMessage.newBuilder().build());
 
     if (nodeInfo.getBlock().isEmpty()) {
@@ -1235,6 +1356,7 @@ public class ApiWrapper implements Api {
    */
   @Override
   public NodeList listNodes() throws IllegalException {
+    //not support SolidityNode
     NodeList nodeList = blockingStub.listNodes(EmptyMessage.newBuilder().build());
 
     if (nodeList.getNodesCount() == 0) {
@@ -1247,33 +1369,44 @@ public class ApiWrapper implements Api {
    * Get transactionInfo from block number
    *
    * @param blockNum The block height
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return TransactionInfoList
    * @throws IllegalException no transactions or the blockNum is incorrect
    */
   @Override
-  public TransactionInfoList getTransactionInfoByBlockNum(long blockNum) throws IllegalException {
+  public TransactionInfoList getTransactionInfoByBlockNum(long blockNum, NodeType... nodeType)
+      throws IllegalException {
     if (blockNum < 0) {
       throw new IllegalException("blockNum must be >= 0");
     }
     NumberMessage numberMessage = NumberMessage.newBuilder().setNum(blockNum).build();
-    return blockingStub.getTransactionInfoByBlockNum(numberMessage);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getTransactionInfoByBlockNum(numberMessage)
+        : blockingStub.getTransactionInfoByBlockNum(numberMessage);
   }
 
   /**
    * Query the transaction fee, block height by transaction id
    *
    * @param txID Transaction hash, i.e. transaction id
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return TransactionInfo
    * @throws IllegalException if the parameters are not correct
    */
   @Override
-  public TransactionInfo getTransactionInfoById(String txID) throws IllegalException {
+  public TransactionInfo getTransactionInfoById(String txID, NodeType... nodeType)
+      throws IllegalException {
     ByteString bsTxId = ByteString.copyFrom(ByteArray.fromHexString(txID));
     BytesMessage request = BytesMessage.newBuilder()
         .setValue(bsTxId)
         .build();
-    TransactionInfo transactionInfo = blockingStub.getTransactionInfoById(request);
-
+    TransactionInfo transactionInfo = useSolidityNode(nodeType)
+        ? blockingStubSolidity.getTransactionInfoById(request)
+        : blockingStub.getTransactionInfoById(request);
     if (transactionInfo.getBlockTimeStamp() == 0) {
       throw new IllegalException();
     }
@@ -1284,17 +1417,23 @@ public class ApiWrapper implements Api {
    * Query transaction information by transaction id
    *
    * @param txID Transaction hash, i.e. transaction id
+   *
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return Transaction
    * @throws IllegalException if the parameters are not correct
    */
   @Override
-  public Transaction getTransactionById(String txID) throws IllegalException {
+  public Transaction getTransactionById(String txID, NodeType... nodeType)
+      throws IllegalException {
     ByteString bsTxId = ByteString.copyFrom(ByteArray.fromHexString(txID));
     BytesMessage request = BytesMessage.newBuilder()
         .setValue(bsTxId)
         .build();
-    Transaction transaction = blockingStub.getTransactionById(request);
-
+    Transaction transaction = useSolidityNode(nodeType)
+        ? blockingStubSolidity.getTransactionById(request)
+        : blockingStub.getTransactionById(request);
     if (transaction.getRetCount() == 0) {
       throw new IllegalException();
     }
@@ -1305,15 +1444,21 @@ public class ApiWrapper implements Api {
    * Get account info by address
    *
    * @param address address, default hexString
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return Account
    */
   @Override
-  public Account getAccount(String address) {
+  public Account getAccount(String address, NodeType... nodeType) {
     ByteString bsAddress = parseAddress(address);
     AccountAddressMessage accountAddressMessage = AccountAddressMessage.newBuilder()
         .setAddress(bsAddress)
         .build();
-    return blockingStub.getAccount(accountAddressMessage);
+
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getAccount(accountAddressMessage)
+        : blockingStub.getAccount(accountAddressMessage);
   }
 
   /**
@@ -1328,6 +1473,7 @@ public class ApiWrapper implements Api {
     AccountAddressMessage account = AccountAddressMessage.newBuilder()
         .setAddress(bsAddress)
         .build();
+    //not support SolidityNode
     return blockingStub.getAccountResource(account);
   }
 
@@ -1343,6 +1489,7 @@ public class ApiWrapper implements Api {
     AccountAddressMessage account = AccountAddressMessage.newBuilder()
         .setAddress(bsAddress)
         .build();
+    //not support SolidityNode
     return blockingStub.getAccountNet(account);
   }
 
@@ -1353,12 +1500,14 @@ public class ApiWrapper implements Api {
   }
 
   @Override
-  public Account getAccountById(String id) {
+  public Account getAccountById(String id, NodeType... nodeType) {
     ByteString bsId = ByteString.copyFrom(id.getBytes());
     AccountIdMessage accountId = AccountIdMessage.newBuilder()
         .setId(bsId)
         .build();
-    return blockingStub.getAccountById(accountId);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getAccountById(accountId)
+        : blockingStub.getAccountById(accountId);
   }
 
   @Override
@@ -1404,13 +1553,16 @@ public class ApiWrapper implements Api {
   /**
    * Returns all resources delegations from an account to another account. The fromAddress can be retrieved from the GetDelegatedResourceAccountIndex API
    *
-   * @param fromAddress energy from address,, default hexString
+   * @param fromAddress energy from address, default hexString
    * @param toAddress energy delegation information, default hexString
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return DelegatedResourceList
    */
   @Override
   public DelegatedResourceList getDelegatedResource(String fromAddress,
-      String toAddress) {
+      String toAddress, NodeType... nodeType) {
 
     ByteString fromAddressBS = parseAddress(fromAddress);
     ByteString toAddressBS = parseAddress(toAddress);
@@ -1419,17 +1571,24 @@ public class ApiWrapper implements Api {
         .setFromAddress(fromAddressBS)
         .setToAddress(toAddressBS)
         .build();
-    return blockingStub.getDelegatedResource(request);
+
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getDelegatedResource(request)
+        : blockingStub.getDelegatedResource(request);
   }
 
   /**
    * Query the energy delegation by an account. i.e. list all addresses that have delegated resources to an account
    *
    * @param address address,, default hexString
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return DelegatedResourceAccountIndex
    */
   @Override
-  public DelegatedResourceAccountIndex getDelegatedResourceAccountIndex(String address) {
+  public DelegatedResourceAccountIndex getDelegatedResourceAccountIndex(String address,
+      NodeType... nodeType) {
 
     ByteString addressBS = parseAddress(address);
 
@@ -1437,19 +1596,25 @@ public class ApiWrapper implements Api {
         .setValue(addressBS)
         .build();
 
-    return blockingStub.getDelegatedResourceAccountIndex(
-        bytesMessage);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getDelegatedResourceAccountIndex(bytesMessage)
+        : blockingStub.getDelegatedResourceAccountIndex(bytesMessage);
   }
 
   /**
    * Query the list of all the TRC10 tokens
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    *
    * @return AssetIssueList
    */
   @Override
-  public AssetIssueList getAssetIssueList() {
-    return blockingStub.getAssetIssueList(
-        EmptyMessage.newBuilder().build());
+  public AssetIssueList getAssetIssueList(NodeType... nodeType) {
+    EmptyMessage emptyMessage = EmptyMessage.newBuilder().build();
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getAssetIssueList(emptyMessage)
+        : blockingStub.getAssetIssueList(emptyMessage);
   }
 
   /**
@@ -1457,16 +1622,21 @@ public class ApiWrapper implements Api {
    *
    * @param offset the index of the start token
    * @param limit the amount of tokens per page
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return AssetIssueList, a list of Tokens that succeed the Token located at offset
    */
   @Override
-  public AssetIssueList getPaginatedAssetIssueList(long offset, long limit) {
+  public AssetIssueList getPaginatedAssetIssueList(long offset, long limit, NodeType... nodeType) {
     PaginatedMessage pageMessage = PaginatedMessage.newBuilder()
         .setOffset(offset)
         .setLimit(limit)
         .build();
 
-    return blockingStub.getPaginatedAssetIssueList(pageMessage);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getPaginatedAssetIssueList(pageMessage)
+        : blockingStub.getPaginatedAssetIssueList(pageMessage);
   }
 
   /**
@@ -1481,6 +1651,7 @@ public class ApiWrapper implements Api {
     AccountAddressMessage request = AccountAddressMessage.newBuilder()
         .setAddress(addressBS)
         .build();
+    //not support SolidityNode
     return blockingStub.getAssetIssueByAccount(request);
   }
 
@@ -1488,48 +1659,62 @@ public class ApiWrapper implements Api {
    * Query a token by token id
    *
    * @param assetId the ID of the TRC10 token
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return AssetIssueContract, the token object, which contains the token name
    */
   @Override
-  public AssetIssueContract getAssetIssueById(String assetId) {
+  public AssetIssueContract getAssetIssueById(String assetId, NodeType... nodeType) {
     ByteString assetIdBs = ByteString.copyFrom(assetId.getBytes());
     BytesMessage request = BytesMessage.newBuilder()
         .setValue(assetIdBs)
         .build();
-
-    return blockingStub.getAssetIssueById(request);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getAssetIssueById(request)
+        : blockingStub.getAssetIssueById(request);
   }
 
   /**
    * Query a token by token name
    *
    * @param name the name of the TRC10 token
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return AssetIssueContract, the token object, which contains the token name
    */
   @Override
-  public AssetIssueContract getAssetIssueByName(String name) {
+  public AssetIssueContract getAssetIssueByName(String name, NodeType... nodeType) {
     ByteString assetNameBs = ByteString.copyFrom(name.getBytes());
     BytesMessage request = BytesMessage.newBuilder()
         .setValue(assetNameBs)
         .build();
 
-    return blockingStub.getAssetIssueByName(request);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getAssetIssueByName(request)
+        : blockingStub.getAssetIssueByName(request);
   }
 
   /**
    * Query the list of all the TRC10 tokens by token name
    *
    * @param name the name of the TRC10 token
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return AssetIssueList
    */
   @Override
-  public AssetIssueList getAssetIssueListByName(String name) {
+  public AssetIssueList getAssetIssueListByName(String name, NodeType... nodeType) {
     ByteString assetNameBs = ByteString.copyFrom(name.getBytes());
     BytesMessage request = BytesMessage.newBuilder()
         .setValue(assetNameBs)
         .build();
 
-    return blockingStub.getAssetIssueListByName(request);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getAssetIssueListByName(request)
+        : blockingStub.getAssetIssueListByName(request);
   }
 
   /**
@@ -1592,41 +1777,57 @@ public class ApiWrapper implements Api {
 
   /**
    * List all witnesses that current API node is connected to
-   *
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return WitnessList
    */
   @Override
-  public WitnessList listWitnesses() {
-    return blockingStub
-        .listWitnesses(EmptyMessage.newBuilder().build());
+  public WitnessList listWitnesses(NodeType... nodeType) {
+    EmptyMessage emptyMessage = EmptyMessage.newBuilder().build();
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.listWitnesses(emptyMessage)
+        : blockingStub.listWitnesses(emptyMessage);
   }
 
   /**
    * List all exchange pairs
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    *
    * @return ExchangeList
    */
   @Override
-  public ExchangeList listExchanges() {
-    return blockingStub.listExchanges(EmptyMessage.newBuilder().build());
+  public ExchangeList listExchanges(NodeType... nodeType) {
+    EmptyMessage emptyMessage = EmptyMessage.newBuilder().build();
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.listExchanges(emptyMessage)
+        : blockingStub.listExchanges(emptyMessage);
   }
 
   /**
    * Query exchange pair based on id
    *
    * @param id transaction pair id
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return Exchange
    * @throws IllegalException if fail to get exchange pair
    */
   @Override
-  public Exchange getExchangeById(String id) throws IllegalException {
+  public Exchange getExchangeById(String id, NodeType... nodeType) throws IllegalException {
     ByteString bsTxId = ByteString.copyFrom(
         ByteArray.fromLong(Long.parseLong(id)));
 
     BytesMessage request = BytesMessage.newBuilder()
         .setValue(bsTxId)
         .build();
-    Exchange exchange = blockingStub.getExchangeById(request);
+
+    Exchange exchange = useSolidityNode(nodeType)
+        ? blockingStubSolidity.getExchangeById(request)
+        : blockingStub.getExchangeById(request);
 
     if (exchange.getSerializedSize() == 0) {
       throw new IllegalException();
@@ -1824,9 +2025,12 @@ public class ApiWrapper implements Api {
   /**
    * Get solid account info by address
    *
+   * @deprecated Since 0.10.0, scheduled for removal in future versions.
+   * use {@link #getAccount(String, NodeType...)} instead
    * @param address address, default hexString
    * @return Account
    */
+  @Deprecated
   @Override
   public Account getAccountSolidity(String address) {
     ByteString bsAddress = parseAddress(address);
@@ -1839,10 +2043,13 @@ public class ApiWrapper implements Api {
   /**
    * Get transactionInfo from block number
    *
+   * @deprecated Since 0.10.0, scheduled for removal in future versions.
+   * use {@link #getTransactionInfoByBlockNum(long, NodeType...)} instead
    * @param blockNum The block height
    * @return TransactionInfoList
    * @throws IllegalException no transactions or the blockNum is incorrect
    */
+  @Deprecated
   @Override
   public TransactionInfoList getTransactionInfoByBlockNumSolidity(long blockNum)
       throws IllegalException {
@@ -1856,9 +2063,13 @@ public class ApiWrapper implements Api {
   /**
    * Query the latest solid block information
    *
+   * @deprecated Since 0.10.0, scheduled for removal in future versions.
+   * use {@link #getNowBlock2(NodeType...)} instead
+   *
    * @return BlockExtention
    * @throws IllegalException if fail to get now block
    */
+  @Deprecated
   @Override
   public BlockExtention getNowBlockSolidity() throws IllegalException {
     BlockExtention blockExtention = blockingStubSolidity.getNowBlock2(
@@ -1873,10 +2084,13 @@ public class ApiWrapper implements Api {
   /**
    * Get transaction receipt info from a transaction id, must be in solid block
    *
+   * @deprecated Since 0.10.0, scheduled for removal in future versions.
+   * use {@link #getTransactionById(String, NodeType...)} instead
    * @param txID Transaction hash, i.e. transaction id
    * @return Transaction
    * @throws IllegalException if the parameters are not correct
    */
+  @Deprecated
   @Override
   public Transaction getTransactionByIdSolidity(String txID) throws IllegalException {
     ByteString bsTxId = ByteString.copyFrom(ByteArray.fromHexString(txID));
@@ -1895,8 +2109,31 @@ public class ApiWrapper implements Api {
    * Get the rewards that the voter has not received
    *
    * @param address address, default hexString
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return NumberMessage
    */
+  @Override
+  public NumberMessage getRewardInfo(String address, NodeType... nodeType) {
+    ByteString bsAddress = parseAddress(address);
+    BytesMessage bytesMessage = BytesMessage.newBuilder()
+        .setValue(bsAddress)
+        .build();
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getRewardInfo(bytesMessage)
+        : blockingStub.getRewardInfo(bytesMessage);
+  }
+
+  /**
+   * Get the rewards that the voter has not received
+   *
+   * @deprecated Since 0.10.0, scheduled for removal in future versions.
+   * use {@link #getRewardInfo(String, NodeType...)} instead
+   * @param address address, default hexString
+   * @return NumberMessage
+   */
+  @Deprecated
   @Override
   public NumberMessage getRewardSolidity(String address) {
     ByteString bsAddress = parseAddress(address);
@@ -1918,14 +2155,25 @@ public class ApiWrapper implements Api {
         Transaction.Contract.ContractType.UpdateBrokerageContract);
   }
 
+  /**
+   * Query the ratio of brokerage of the witness.
+   *
+   * @param address the address of the witness's account
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
+   * @return the ratio of brokerage
+   */
   @Override
-  public long getBrokerageInfo(String address) {
+  public long getBrokerageInfo(String address, NodeType... nodeType) {
     ByteString sr = parseAddress(address);
     BytesMessage param =
         BytesMessage.newBuilder()
             .setValue(sr)
             .build();
-    return blockingStub.getBrokerageInfo(param).getNum();
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getBrokerageInfo(param).getNum()
+        : blockingStub.getBrokerageInfo(param).getNum();
   }
 
   /**
@@ -1994,7 +2242,7 @@ public class ApiWrapper implements Api {
    * @param function contract function.
    * @return TransactionExtention.
    * @deprecated Since 0.9.2, scheduled for removal in future versions.
-   * Use {@link #triggerConstantContract(String, String, Function)} instead.
+   * Use {@link #triggerConstantContract(String, String, Function, NodeType...)} instead.
    */
   @Deprecated
   @Override
@@ -2011,7 +2259,7 @@ public class ApiWrapper implements Api {
    * @param callData The data passed along with a transaction that allows us to interact with smart contracts.
    * @return TransactionExtention.
    * @deprecated Since 0.9.2, scheduled for removal in future versions.
-   * Use {@link #triggerConstantContract(String, String, String)} instead.
+   * Use {@link #triggerConstantContract(String, String, String, NodeType...)} instead.
    */
   @Deprecated
   @Override
@@ -2021,22 +2269,22 @@ public class ApiWrapper implements Api {
   }
 
   /**
-   * @see #triggerConstantContract(String, String, String)
+   * @see #triggerConstantContract(String, String, String, NodeType...)
    */
   @Override
   public TransactionExtention triggerConstantContract(String ownerAddress, String contractAddress,
-      Function function) {
+      Function function, NodeType... nodeType) {
     String callData = FunctionEncoder.encode(function);
-    return triggerConstantContract(ownerAddress, contractAddress, callData);
+    return triggerConstantContract(ownerAddress, contractAddress, callData, nodeType);
   }
 
   /**
-   * @see #triggerConstantContract(String, String, String, long, long, String)
+   * @see #triggerConstantContract(String, String, String, long, long, String, NodeType...)
    */
   @Override
   public TransactionExtention triggerConstantContract(String ownerAddress, String contractAddress,
-      String callData) {
-    return triggerConstantContract(ownerAddress, contractAddress, callData, 0L, 0L, null);
+      String callData, NodeType... nodeType) {
+    return triggerConstantContract(ownerAddress, contractAddress, callData, 0L, 0L, null, nodeType);
   }
 
   /**
@@ -2049,14 +2297,19 @@ public class ApiWrapper implements Api {
    * @param callValue call Value. If TRX not used, use 0.
    * @param tokenValue token Value, If token10 not used, use 0.
    * @param tokenId token10 ID, If token10 not used, use null.
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return TransactionExtention.
    */
   @Override
   public TransactionExtention triggerConstantContract(String ownerAddress, String contractAddress,
-      String callData, long callValue, long tokenValue, String tokenId) {
+      String callData, long callValue, long tokenValue, String tokenId, NodeType... nodeType) {
     TriggerSmartContract trigger = buildTrigger(ownerAddress, contractAddress, callData, callValue,
         tokenValue, tokenId);
-    return blockingStub.triggerConstantContract(trigger);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.triggerConstantContract(trigger)
+        : blockingStub.triggerConstantContract(trigger);
   }
 
   /**
@@ -2067,7 +2320,7 @@ public class ApiWrapper implements Api {
    * @param function contract function
    * @return transaction builder. Users may set other fields, e.g. feeLimit
    * @deprecated Since 0.9.2, scheduled for removal in future versions.
-   * Use {@link #triggerConstantContract(String, String, Function)} instead.
+   * Use {@link #triggerConstantContract(String, String, Function, NodeType...)} instead.
    */
   @Deprecated
   @Override
@@ -2085,7 +2338,7 @@ public class ApiWrapper implements Api {
    * @param callData The data passed along with a transaction that allows us to interact with smart contracts.
    * @return transaction builder. TransactionExtention detail.
    * @deprecated Since 0.9.2, scheduled for removal in future versions.
-   * Use {@link #triggerConstantContract(String, String, String)} instead.
+   * Use {@link #triggerConstantContract(String, String, String, NodeType...)} instead.
    */
   @Deprecated
   @Override
@@ -2141,13 +2394,18 @@ public class ApiWrapper implements Api {
   /**
    * GetBurnTRX
    * Query the amount of TRX burned due to on-chain transaction fees since No. 54 Committee Proposal took effect
-   *
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return burn trx amount
    */
   @Override
-  public long getBurnTRX() {
-    GrpcAPI.NumberMessage numberMessage = blockingStub.getBurnTrx(
-        EmptyMessage.getDefaultInstance());
+  public long getBurnTRX(NodeType... nodeType) {
+    EmptyMessage emptyMessage = EmptyMessage.newBuilder().build();
+    NumberMessage numberMessage = useSolidityNode(nodeType)
+        ? blockingStubSolidity.getBurnTrx(emptyMessage)
+        : blockingStub.getBurnTrx(emptyMessage);
+
     return numberMessage.getNum();
   }
 
@@ -2226,7 +2484,7 @@ public class ApiWrapper implements Api {
    */
   @Override
   public long getNextMaintenanceTime() {
-    GrpcAPI.NumberMessage numberMessage = blockingStub.getNextMaintenanceTime(
+    NumberMessage numberMessage = blockingStub.getNextMaintenanceTime(
         EmptyMessage.getDefaultInstance());
     return numberMessage.getNum();
   }
@@ -2307,7 +2565,7 @@ public class ApiWrapper implements Api {
    * @return transaction list information from pending pool
    */
   @Override
-  public GrpcAPI.TransactionIdList getTransactionListFromPending() {
+  public TransactionIdList getTransactionListFromPending() {
     return blockingStub.getTransactionListFromPending(
         EmptyMessage.getDefaultInstance());
   }
@@ -2320,7 +2578,7 @@ public class ApiWrapper implements Api {
    */
   @Override
   public long getPendingSize() {
-    GrpcAPI.NumberMessage pendingSize = blockingStub.getPendingSize(
+    NumberMessage pendingSize = blockingStub.getPendingSize(
         EmptyMessage.getDefaultInstance());
     return pendingSize.getNum();
   }
@@ -2372,15 +2630,20 @@ public class ApiWrapper implements Api {
    * format, otherwise use hex format. For constant call you can use the all-zero address.
    * @param contractAddress Smart contract address.
    * @param function contract function
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return EstimateEnergyMessage. Estimated energy to run the contract
    */
   @Override
   public Response.EstimateEnergyMessage estimateEnergy(String ownerAddress, String contractAddress,
-      Function function) {
+      Function function, NodeType... nodeType) {
     String encodedHex = FunctionEncoder.encode(function);
     TriggerSmartContract trigger = buildTrigger(ownerAddress, contractAddress, encodedHex, 0L, 0L,
         null);
-    return blockingStub.estimateEnergy(trigger);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.estimateEnergy(trigger)
+        : blockingStub.estimateEnergy(trigger);
   }
 
   /**
@@ -2396,14 +2659,19 @@ public class ApiWrapper implements Api {
    * @param callValue call Value. If TRX not used, use 0.
    * @param tokenValue token Value, If token10 not used, use 0.
    * @param tokenId token10 ID, If token10 not used, use null.
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return EstimateEnergyMessage. Estimated energy to run the contract
    */
   @Override
-  public Response.EstimateEnergyMessage estimateEnergy(String ownerAddress,
-      String contractAddress, String callData, long callValue, long tokenValue, String tokenId) {
+  public Response.EstimateEnergyMessage estimateEnergy(String ownerAddress, String contractAddress,
+      String callData, long callValue, long tokenValue, String tokenId, NodeType... nodeType) {
     TriggerSmartContract trigger = buildTrigger(ownerAddress, contractAddress, callData, callValue,
         tokenValue, tokenId);
-    return blockingStub.estimateEnergy(trigger);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.estimateEnergy(trigger)
+        : blockingStub.estimateEnergy(trigger);
   }
 
   /**
@@ -2419,7 +2687,7 @@ public class ApiWrapper implements Api {
    * @param callData The data passed along with a transaction that allows us to interact with smart contracts.
    * @return EstimateEnergyMessage. Estimated energy to run the contract
    * @deprecated Since 0.9.2, scheduled for removal in future versions.
-   * Use {@link #estimateEnergy(String, String, String, long, long, String)} instead.
+   * Use {@link #estimateEnergy(String, String, String, long, long, String, NodeType... )} instead.
    */
   @Override
   public Response.EstimateEnergyMessage estimateEnergyV2(String ownerAddress,
@@ -2453,30 +2721,40 @@ public class ApiWrapper implements Api {
   /**
    * GetBandwidthPrices
    * Query historical bandwidth unit price.
-   *
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return prices string: All historical bandwidth unit price information.
    * Each unit price change is separated by a comma.
    * Before the colon is the millisecond timestamp,
    * and after the colon is the bandwidth unit price in sun.
    */
   @Override
-  public Response.PricesResponseMessage getBandwidthPrices() {
-    return blockingStub.getBandwidthPrices(EmptyMessage.getDefaultInstance());
+  public PricesResponseMessage getBandwidthPrices(NodeType... nodeType) {
+    EmptyMessage emptyMessage = EmptyMessage.newBuilder().build();
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getBandwidthPrices(emptyMessage)
+        : blockingStub.getBandwidthPrices(emptyMessage);
   }
 
 
   /**
    * GetEnergyPrices
    * Query historical energy unit price.
-   *
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return prices string: All historical bandwidth unit price information.
    * Each unit price change is separated by a comma.
    * Before the colon is the millisecond timestamp,
    * and after the colon is the bandwidth unit price in sun.
    */
   @Override
-  public Response.PricesResponseMessage getEnergyPrices() {
-    return blockingStub.getEnergyPrices(EmptyMessage.getDefaultInstance());
+  public PricesResponseMessage getEnergyPrices(NodeType... nodeType) {
+    EmptyMessage emptyMessage = EmptyMessage.newBuilder().build();
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getEnergyPrices(emptyMessage)
+        : blockingStub.getEnergyPrices(emptyMessage);
   }
 
 
@@ -2490,7 +2768,7 @@ public class ApiWrapper implements Api {
    * and after the colon is the bandwidth unit price in sun.
    */
   @Override
-  public Response.PricesResponseMessage getMemoFee() {
+  public PricesResponseMessage getMemoFee() {
     return blockingStub.getMemoFee(EmptyMessage.getDefaultInstance());
   }
 
@@ -2498,14 +2776,16 @@ public class ApiWrapper implements Api {
   /**
    * GetBandwidthPricesOnSolidity
    * Query historical bandwidth unit price.
-   *
+   * @deprecated Since 0.10.0, scheduled for removal in future versions.
+   * use {@link  #getBandwidthPrices(NodeType...)} instead
    * @return prices string: All historical bandwidth unit price information.
    * Each unit price change is separated by a comma.
    * Before the colon is the millisecond timestamp,
    * and after the colon is the bandwidth unit price in sun.
    */
+  @Deprecated
   @Override
-  public Response.PricesResponseMessage getBandwidthPricesOnSolidity() {
+  public PricesResponseMessage getBandwidthPricesOnSolidity() {
     return blockingStubSolidity.getBandwidthPrices(EmptyMessage.getDefaultInstance());
   }
 
@@ -2513,14 +2793,16 @@ public class ApiWrapper implements Api {
   /**
    * GetEnergyPricesOnSolidity
    * Query historical energy unit price.
-   *
+   * @deprecated Since 0.10.0, scheduled for removal in future versions.
+   * use {@link #getEnergyPrices(NodeType...)} instead
    * @return prices string: All historical bandwidth unit price information.
    * Each unit price change is separated by a comma.
    * Before the colon is the millisecond timestamp,
    * and after the colon is the bandwidth unit price in sun.
    */
+  @Deprecated
   @Override
-  public Response.PricesResponseMessage getEnergyPricesOnSolidity() {
+  public PricesResponseMessage getEnergyPricesOnSolidity() {
     return blockingStubSolidity.getEnergyPrices(EmptyMessage.getDefaultInstance());
   }
 
@@ -2581,28 +2863,40 @@ public class ApiWrapper implements Api {
    *
    * @param blockIDOrNum block Id or block num
    * @param detail if false, no transactions are contained.
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return BlockExtention
    */
   @Override
-  public BlockExtention getBlock(String blockIDOrNum, boolean detail) {
+  public BlockExtention getBlock(String blockIDOrNum, boolean detail, NodeType... nodeType) {
     BlockReq blockReq = BlockReq.newBuilder()
         .setIdOrNum(blockIDOrNum)
         .setDetail(detail)
         .build();
-    return blockingStub.getBlock(blockReq);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getBlock(blockReq)
+        : blockingStub.getBlock(blockReq);
   }
 
   /**
    * get latest block extension
    *
    * @param detail specify whether to contains transaction in BlockExtention
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
+   * @return BlockExtention
    */
   @Override
-  public BlockExtention getBlock(boolean detail) {
+  public BlockExtention getBlock(boolean detail, NodeType... nodeType) {
     BlockReq blockReq = BlockReq.newBuilder()
         .setDetail(detail)
         .build();
-    return blockingStub.getBlock(blockReq);
+
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getBlock(blockReq)
+        : blockingStub.getBlock(blockReq);
   }
 
   /**
@@ -2648,32 +2942,42 @@ public class ApiWrapper implements Api {
    * getMarketOrderByAccount
    *
    * @param address account address
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return MarketOrderList
    */
   @Override
-  public MarketOrderList getMarketOrderByAccount(String address) {
+  public MarketOrderList getMarketOrderByAccount(String address, NodeType... nodeType) {
     ByteString rawAddress = parseAddress(address);
     BytesMessage param =
         BytesMessage.newBuilder()
             .setValue(rawAddress)
             .build();
-    return blockingStub.getMarketOrderByAccount(param);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getMarketOrderByAccount(param)
+        : blockingStub.getMarketOrderByAccount(param);
   }
 
   /**
    * getMarketOrderById
    *
    * @param txn market transactionId
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return MarketOrder
    */
   @Override
-  public MarketOrder getMarketOrderById(String txn) {
+  public MarketOrder getMarketOrderById(String txn, NodeType... nodeType) {
     ByteString rawAddress = ByteString.copyFrom(ByteArray.fromHexString(txn));
     BytesMessage param =
         BytesMessage.newBuilder()
             .setValue(rawAddress)
             .build();
-    return blockingStub.getMarketOrderById(param);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getMarketOrderById(param)
+        : blockingStub.getMarketOrderById(param);
   }
 
   /**
@@ -2681,26 +2985,37 @@ public class ApiWrapper implements Api {
    *
    * @param sellTokenId market sell token id
    * @param buyTokenId market buy token id
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return MarketOrderList
    */
   @Override
-  public MarketOrderList getMarketOrderListByPair(String sellTokenId, String buyTokenId) {
+  public MarketOrderList getMarketOrderListByPair(String sellTokenId, String buyTokenId,
+      NodeType... nodeType) {
     MarketOrderPair param =
         MarketOrderPair.newBuilder()
             .setSellTokenId(ByteString.copyFrom(sellTokenId.getBytes()))
             .setBuyTokenId(ByteString.copyFrom(buyTokenId.getBytes()))
             .build();
-    return blockingStub.getMarketOrderListByPair(param);
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getMarketOrderListByPair(param)
+        : blockingStub.getMarketOrderListByPair(param);
   }
 
   /**
    * getMarketPairList
-   *
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return MarketOrderPairList
    */
   @Override
-  public MarketOrderPairList getMarketPairList() {
-    return blockingStub.getMarketPairList(EmptyMessage.getDefaultInstance());
+  public MarketOrderPairList getMarketPairList(NodeType... nodeType) {
+    EmptyMessage emptyMessage = EmptyMessage.newBuilder().build();
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getMarketPairList(emptyMessage)
+        : blockingStub.getMarketPairList(emptyMessage);
   }
 
   /**
@@ -2708,16 +3023,23 @@ public class ApiWrapper implements Api {
    *
    * @param sellTokenId market sell token id
    * @param buyTokenId market buy token id
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return MarketPriceList
    */
   @Override
-  public MarketPriceList getMarketPriceByPair(String sellTokenId, String buyTokenId) {
+  public MarketPriceList getMarketPriceByPair(String sellTokenId, String buyTokenId,
+      NodeType... nodeType) {
     MarketOrderPair param =
         MarketOrderPair.newBuilder()
             .setSellTokenId(ByteString.copyFrom(sellTokenId.getBytes()))
             .setBuyTokenId(ByteString.copyFrom(buyTokenId.getBytes()))
             .build();
-    return blockingStub.getMarketPriceByPair(param);
+
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getMarketPriceByPair(param)
+        : blockingStub.getMarketPriceByPair(param);
   }
 
   /**
@@ -2821,12 +3143,18 @@ public class ApiWrapper implements Api {
    * getTransactionCountByBlockNum
    *
    * @param blockNum block num
+   * @param nodeType Optional parameter to specify which node to query.
+   *                 If not provided, uses full node default.
+   *                 If NodeType.SOLIDITY_NODE, uses solidity node.
    * @return the transaction count in block
    */
   @Override
-  public long getTransactionCountByBlockNum(long blockNum) {
+  public long getTransactionCountByBlockNum(long blockNum, NodeType... nodeType) {
     NumberMessage message = NumberMessage.newBuilder().setNum(blockNum).build();
-    return blockingStub.getTransactionCountByBlockNum(message).getNum();
+    System.out.println(useSolidityNode(nodeType));
+    return useSolidityNode(nodeType)
+        ? blockingStubSolidity.getTransactionCountByBlockNum(message).getNum()
+        : blockingStub.getTransactionCountByBlockNum(message).getNum();
   }
 
   /**
@@ -3039,4 +3367,5 @@ public class ApiWrapper implements Api {
     return createTransactionExtention(createSmartContract,
         ContractType.CreateSmartContract, feeLimit);
   }
+
 }
