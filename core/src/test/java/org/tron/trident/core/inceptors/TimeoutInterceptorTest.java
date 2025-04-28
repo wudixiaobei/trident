@@ -37,7 +37,6 @@ public class TimeoutInterceptorTest {
       fail("Except DEADLINE_EXCEEDED Exception");
 
     } catch (Exception e) {
-      System.out.println(e.getMessage());
       assertTrue(e.getMessage().contains("DEADLINE_EXCEEDED"));
       assertTrue(e instanceof io.grpc.StatusRuntimeException);
     } finally {
@@ -61,11 +60,9 @@ public class TimeoutInterceptorTest {
 
     try {
       BlockExtention blockExtention = client.getBlock(false);
-      System.out.println(blockExtention.getBlockHeader().getRawData().getNumber());
       fail("Except DEADLINE_EXCEEDED Exception");
 
     } catch (Exception e) {
-      System.out.println(e.getMessage());
       assertTrue(e.getMessage().contains("DEADLINE_EXCEEDED"));
       assertTrue(e instanceof io.grpc.StatusRuntimeException);
     } finally {

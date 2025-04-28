@@ -233,7 +233,6 @@ class AbiUtilsTest {
     assertEquals(0, builder.getEntrysCount());
 
     AbiUtils.loadAbiFromJson("[]", builder);
-    System.out.println(builder.toString());
     assertEquals(0, builder.getEntrysCount());
 
     AbiUtils.loadAbiFromJson(null, builder);
